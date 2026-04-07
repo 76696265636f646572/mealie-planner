@@ -7,5 +7,5 @@ services:
       PLANNER_START_DATE: ${PLANNER_START_DATE:-}
       PLANNER_DAYS: ${PLANNER_DAYS:-}
       PLANNER_END_DATE: ${PLANNER_END_DATE:-}
-    restart: "no"
+    restart: "unless-stopped"
 
