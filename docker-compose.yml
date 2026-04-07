@@ -1,7 +1,6 @@
 services:
   mealie-planner:
-    build: .
-    image: mealie-planner:local
+    image: ghcr.io/76696265636f646572/mealie-planner:latest
     env_file:
       - ./src/.env
     restart: "no"
