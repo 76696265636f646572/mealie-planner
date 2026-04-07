@@ -16,6 +16,16 @@ function todayISO() {
     return `${y}-${m}-${day}`;
 }
 
+function nextLocalRunAt() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(0, 5, 0, 0);
+    if (next <= now) {
+        next.setDate(next.getDate() + 1);
+    }
+    return next;
+}
+
 function addDaysISO(isoDate, days) {
     const d = new Date(`${isoDate}T12:00:00`);
     d.setDate(d.getDate() + days);
@@ -77,7 +87,7 @@ function isSlotFilled(entry) {
     return Boolean(entry?.recipeId || (entry?.recipe && entry.recipe.slug));
 }
 
-async function main() {
+async function runPlannerOnce() {
     const { start, end } = configuredRange();
     const payload = await fillRange({ mealie, start, end, categories: CATEGORY_ORDER });
     console.log(JSON.stringify(payload, null, 2));
@@ -90,19 +100,51 @@ async function main() {
 
 const OUTER_ATTEMPTS = 8;
 
-for (let attempt = 1; attempt <= OUTER_ATTEMPTS; attempt++) {
-    try {
-        await main();
-        break;
-    } catch (err) {
-        const isLast = attempt === OUTER_ATTEMPTS;
-        const detail = err?.response?.data ?? err?.message ?? err;
-        console.error(`mealie-planner: attempt ${attempt}/${OUTER_ATTEMPTS} failed:`, detail);
-        if (isLast) {
-            process.exitCode = 1;
-            break;
+async function runWithRetries() {
+    for (let attempt = 1; attempt <= OUTER_ATTEMPTS; attempt++) {
+        try {
+            await runPlannerOnce();
+            return;
+        } catch (err) {
+            const isLast = attempt === OUTER_ATTEMPTS;
+            const detail = err?.response?.data ?? err?.message ?? err;
+            console.error(`mealie-planner: attempt ${attempt}/${OUTER_ATTEMPTS} failed:`, detail);
+            if (isLast) {
+                process.exitCode = 1;
+                return;
+            }
+            const wait = Math.min(2000 * 2 ** (attempt - 1), 30000) + Math.random() * 500;
+            await new Promise((r) => setTimeout(r, wait));
         }
-        const wait = Math.min(2000 * 2 ** (attempt - 1), 30000) + Math.random() * 500;
-        await new Promise((r) => setTimeout(r, wait));
     }
 }
+
+async function scheduleDaily() {
+    // Run immediately on startup so new deployments fill right away,
+    // then keep the next 7-day window filled by running daily.
+    await runWithRetries();
+
+    // After the first run, don't keep a failing exit code around forever.
+    process.exitCode = 0;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        const next = nextLocalRunAt();
+        const ms = next.getTime() - Date.now();
+        console.error(`mealie-planner: next run scheduled at ${next.toISOString()}`);
+        await new Promise((r) => setTimeout(r, ms));
+        await runWithRetries();
+        process.exitCode = 0;
+    }
+}
+
+process.on('unhandledRejection', (err) => {
+    console.error('mealie-planner: unhandledRejection:', err);
+    process.exitCode = 1;
+});
+process.on('uncaughtException', (err) => {
+    console.error('mealie-planner: uncaughtException:', err);
+    process.exitCode = 1;
+});
+
+await scheduleDaily();
