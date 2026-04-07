@@ -1,0 +1,8 @@
+services:
+  mealie-planner:
+    build: .
+    image: mealie-planner:local
+    env_file:
+      - ./src/.env
+    restart: "no"
+

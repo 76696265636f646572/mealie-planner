@@ -1,4 +1,5 @@
 import mealie from './lib/mealie.js';
+import { fillRange } from './planner.js';
 
 /**
  * Meal plan categories. API calls run in this order:
@@ -24,10 +25,41 @@ function addDaysISO(isoDate, days) {
     return `${y}-${m}-${day}`;
 }
 
-/** Upcoming week: today through the next 6 days (7 days total). */
-function upcomingWeekRange() {
-    const start = todayISO();
-    const end = addDaysISO(start, 6);
+function isISODate(s) {
+    return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+/**
+ * Configurable range (defaults to upcoming 7 days).
+ *
+ * Env vars:
+ * - PLANNER_START_DATE=YYYY-MM-DD (default: today)
+ * - PLANNER_DAYS=N (default: 7)
+ * - PLANNER_END_DATE=YYYY-MM-DD (optional; overrides PLANNER_DAYS)
+ */
+function configuredRange() {
+    const start = process.env.PLANNER_START_DATE || todayISO();
+    if (!isISODate(start)) {
+        throw new Error(`Invalid PLANNER_START_DATE (expected YYYY-MM-DD): ${start}`);
+    }
+
+    const explicitEnd = process.env.PLANNER_END_DATE;
+    if (explicitEnd != null && explicitEnd !== '') {
+        if (!isISODate(explicitEnd)) {
+            throw new Error(`Invalid PLANNER_END_DATE (expected YYYY-MM-DD): ${explicitEnd}`);
+        }
+        if (explicitEnd < start) {
+            throw new Error(`PLANNER_END_DATE must be >= PLANNER_START_DATE (${explicitEnd} < ${start})`);
+        }
+        return { start, end: explicitEnd };
+    }
+
+    const rawDays = process.env.PLANNER_DAYS || '7';
+    const days = Number.parseInt(rawDays, 10);
+    if (!Number.isFinite(days) || days < 1) {
+        throw new Error(`Invalid PLANNER_DAYS (expected integer >= 1): ${rawDays}`);
+    }
+    const end = addDaysISO(start, days - 1);
     return { start, end };
 }
 
@@ -46,50 +78,10 @@ function isSlotFilled(entry) {
 }
 
 async function main() {
-    const { start, end } = upcomingWeekRange();
-    const pagination = await mealie.getMealPlans(start, end);
-    const items = pagination.items || [];
-
-    const byDayAndType = new Map();
-
-    for (const entry of items) {
-        const date = entry.date?.slice(0, 10);
-        if (!date) {
-            continue;
-        }
-        const type = entry.entryType;
-        if (!byDayAndType.has(date)) {
-            byDayAndType.set(date, new Map());
-        }
-        const byType = byDayAndType.get(date);
-        if (!byType.has(type)) {
-            byType.set(type, entry);
-        }
-    }
-
-    const days = enumerateDays(start, end);
-    const created = [];
-
-    for (const entryType of CATEGORY_ORDER) {
-        for (const date of days) {
-            let byType = byDayAndType.get(date);
-            if (!byType) {
-                byType = new Map();
-                byDayAndType.set(date, byType);
-            }
-            const existing = byType.get(entryType);
-            if (existing && isSlotFilled(existing)) {
-                continue;
-            }
-            const plan = await mealie.createRandomPlanEntry({ date, entryType });
-            created.push({ date, entryType, id: plan.id, recipe: plan.recipe?.name || plan.recipe?.slug });
-            byType.set(entryType, plan);
-        }
-    }
-
-    const payload = { range: { start, end }, filledCount: created.length, filledSlots: created };
+    const { start, end } = configuredRange();
+    const payload = await fillRange({ mealie, start, end, categories: CATEGORY_ORDER });
     console.log(JSON.stringify(payload, null, 2));
-    if (created.length === 0) {
+    if (payload.filledCount === 0) {
         console.error(
             'mealie-planner: success — no gaps to fill (breakfast/lunch/dinner already set for each day in range).',
         );
