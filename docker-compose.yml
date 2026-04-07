@@ -1,7 +1,11 @@
 services:
   mealie-planner:
     image: ghcr.io/76696265636f646572/mealie-planner:latest
-    env_file:
-      - ./src/.env
+    environment:
+      MEALIE_BASE_URL: ${MEALIE_BASE_URL}
+      MEALIE_API_TOKEN: ${MEALIE_API_TOKEN}
+      PLANNER_START_DATE: ${PLANNER_START_DATE:-}
+      PLANNER_DAYS: ${PLANNER_DAYS:-}
+      PLANNER_END_DATE: ${PLANNER_END_DATE:-}
     restart: "no"
 
