@@ -30,14 +30,25 @@ function isSlotFilled(entry) {
  * - then all missing breakfasts (chronological)
  *
  * @param {{
- *   mealie: { getMealPlans: (start: string, end: string) => Promise<{items?: any[]}>,
- *             createRandomPlanEntry: (body: {date: string, entryType: string}) => Promise<any> },
+ *   mealie: {
+ *     getMealPlans: (start: string, end: string) => Promise<{items?: any[]}>,
+ *     createRandomPlanEntry: (body: {date: string, entryType: string}) => Promise<any>,
+ *     getRecipeBySlug?: (slug: string) => Promise<any>,
+ *     createPlanEntry?: (body: {date: string, entryType: string, recipeId: string}) => Promise<any>,
+ *   },
  *   start: string,
  *   end: string,
- *   categories?: string[]
+ *   categories?: string[],
+ *   fixedSlugsByType?: Record<string, string>
  * }} args
  */
-export async function fillRange({ mealie, start, end, categories = ['dinner', 'lunch', 'breakfast'] }) {
+export async function fillRange({
+    mealie,
+    start,
+    end,
+    categories = ['dinner', 'lunch', 'breakfast'],
+    fixedSlugsByType = {},
+}) {
     const pagination = await mealie.getMealPlans(start, end);
     const items = pagination.items || [];
 
@@ -60,6 +71,7 @@ export async function fillRange({ mealie, start, end, categories = ['dinner', 'l
 
     const days = enumerateDays(start, end);
     const created = [];
+    const recipeIdBySlug = new Map();
 
     for (const entryType of categories) {
         for (const date of days) {
@@ -74,7 +86,28 @@ export async function fillRange({ mealie, start, end, categories = ['dinner', 'l
                 continue;
             }
 
-            const plan = await mealie.createRandomPlanEntry({ date, entryType });
+            const fixedSlug = fixedSlugsByType?.[entryType];
+            let plan;
+            if (fixedSlug) {
+                if (typeof mealie.getRecipeBySlug !== 'function' || typeof mealie.createPlanEntry !== 'function') {
+                    throw new Error('Fixed slug configured but mealie client lacks getRecipeBySlug/createPlanEntry');
+                }
+
+                let recipeId = recipeIdBySlug.get(fixedSlug);
+                if (!recipeId) {
+                    const recipe = await mealie.getRecipeBySlug(fixedSlug);
+                    recipeId = recipe?.id;
+                    if (!recipeId) {
+                        throw new Error(`Could not resolve recipe id for slug: ${fixedSlug}`);
+                    }
+                    recipeIdBySlug.set(fixedSlug, recipeId);
+                }
+
+                plan = await mealie.createPlanEntry({ date, entryType, recipeId });
+            } else {
+                plan = await mealie.createRandomPlanEntry({ date, entryType });
+            }
+
             created.push({
                 date,
                 entryType,

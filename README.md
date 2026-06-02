@@ -10,6 +10,17 @@ It fetches meal plans for the next 7 days (today → today+6) and, for each day,
 
 Missing slots are filled using Mealie’s built-in random meal picker (`/api/households/mealplans/random`), so your household rules apply.
 
+### Fixed meals (optional)
+
+You can optionally set a **fixed recipe** (by slug) for breakfast/lunch/dinner. When configured, missing slots are filled with that fixed recipe (the planner **does not override** existing slots).
+
+```env
+# optional
+PLANNER_FIXED_BREAKFAST_SLUG=yoghurt-met-banaan-aardbeien-en-kokos
+PLANNER_FIXED_LUNCH_SLUG=
+PLANNER_FIXED_DINNER_SLUG=
+```
+
 ## How ordering works (important)
 
 API creation calls run in this **global** order (date ascending within each group):

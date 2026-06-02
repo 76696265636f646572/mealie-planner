@@ -60,6 +60,18 @@ class MealieClient {
     }
 
     /**
+     * Fetch a recipe by its slug.
+     * @param {string} slug
+     */
+    async getRecipeBySlug(slug) {
+        if (!slug || typeof slug !== 'string') {
+            throw new Error(`Invalid recipe slug: ${slug}`);
+        }
+        const response = await client.get(`/recipes/${encodeURIComponent(slug)}`);
+        return response.data;
+    }
+
+    /**
      * @param {string} startDate - ISO date YYYY-MM-DD
      * @param {string} endDate - ISO date YYYY-MM-DD
      */
@@ -81,6 +93,15 @@ class MealieClient {
      */
     async createRandomPlanEntry(body) {
         const response = await client.post('/households/mealplans/random', body);
+        return response.data;
+    }
+
+    /**
+     * Create a mealplan entry for a specific recipe.
+     * @param {{ date: string, entryType: string, recipeId: string }} body
+     */
+    async createPlanEntry(body) {
+        const response = await client.post('/households/mealplans', body);
         return response.data;
     }
 }

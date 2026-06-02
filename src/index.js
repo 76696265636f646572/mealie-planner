@@ -89,7 +89,12 @@ function isSlotFilled(entry) {
 
 async function runPlannerOnce() {
     const { start, end } = configuredRange();
-    const payload = await fillRange({ mealie, start, end, categories: CATEGORY_ORDER });
+    const fixedSlugsByType = {
+        dinner: process.env.PLANNER_FIXED_DINNER_SLUG,
+        lunch: process.env.PLANNER_FIXED_LUNCH_SLUG,
+        breakfast: process.env.PLANNER_FIXED_BREAKFAST_SLUG,
+    };
+    const payload = await fillRange({ mealie, start, end, categories: CATEGORY_ORDER, fixedSlugsByType });
     console.log(JSON.stringify(payload, null, 2));
     if (payload.filledCount === 0) {
         console.error(
